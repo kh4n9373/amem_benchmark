@@ -1,0 +1,92 @@
+{
+  "meta": {
+    "input_file": "/home/vinhpq/mem_baseline/amem/test_results_20251211_093254/retrieval_results_20251211_093254.json",
+    "ks": [
+      "3",
+      "5",
+      "10"
+    ],
+    "contain_threshold": 0.85,
+    "precision_mode": "ir",
+    "skipped_no_evidence": 0
+  },
+  "macro_avgs": {
+    "3": {
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "ndcg": 0.0
+    },
+    "5": {
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "ndcg": 0.0
+    },
+    "10": {
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "ndcg": 0.0
+    }
+  },
+  "micro_avgs": {
+    "3": {
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "ndcg": 0.0
+    },
+    "5": {
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "ndcg": 0.0
+    },
+    "10": {
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "ndcg": 0.0
+    }
+  },
+  "counts": {
+    "3": 0,
+    "5": 0,
+    "10": 0
+  },
+  "failed": [],
+  "per_record": {
+    "3": [],
+    "5": [],
+    "10": []
+  },
+  "micro_sums": {
+    "3": {
+      "tp_evidence": 0.0,
+      "retrieved": 0.0,
+      "gold": 0.0,
+      "rel_chunks": 0.0,
+      "dcg": 0.0,
+      "idcg": 0.0
+    },
+    "5": {
+      "tp_evidence": 0.0,
+      "retrieved": 0.0,
+      "gold": 0.0,
+      "rel_chunks": 0.0,
+      "dcg": 0.0,
+      "idcg": 0.0
+    },
+    "10": {
+      "tp_evidence": 0.0,
+      "retrieved": 0.0,
+      "gold": 0.0,
+      "rel_chunks": 0.0,
+      "dcg": 0.0,
+      "idcg": 0.0
+    }
+  },
+  "skipped_no_evidence": [],
+  "category_avgs": {}
+}

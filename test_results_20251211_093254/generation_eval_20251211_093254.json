@@ -1,0 +1,21 @@
+{
+  "config": {
+    "retrieval_file": "/home/vinhpq/mem_baseline/amem/test_results_20251211_093254/retrieval_results_20251211_093254.json",
+    "ground_truth": "/home/vinhpq/mem_baseline/amem/data/locomo/processed_data/locomo_small_test.json",
+    "llm_model": "Qwen/Qwen3-8B",
+    "context_k": 5,
+    "base_url": "http://localhost:8001/v1",
+    "disable_thinking": true
+  },
+  "overall": {
+    "f1": 0.0,
+    "bleu": 0.0,
+    "rouge1": 0.0,
+    "rouge2": 0.0,
+    "rougeL": 0.0,
+    "bertscore_f1": 0.0,
+    "count": 0
+  },
+  "by_category": {},
+  "per_question": []
+}
