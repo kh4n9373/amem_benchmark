@@ -49,7 +49,7 @@ echo ""
 
 # 4. Install A-mem package
 echo "📌 Installing A-mem package..."
-A_MEM_DIR="/home/vinhpq/mem_baseline/A-mem"
+A_MEM_DIR="$SCRIPT_DIR/amem"
 if [ -d "$A_MEM_DIR" ]; then
     pip install -e "$A_MEM_DIR"
     echo "✅ A-mem package installed"

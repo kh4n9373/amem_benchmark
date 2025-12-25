@@ -16,7 +16,7 @@ import json
 with open('data/locomo/processed_data/locomo_processed_data.json', 'r') as f:
     data = json.load(f)
 with open('data/locomo/processed_data/locomo_small_test.json', 'w') as f:
-    json.dump(data[:20], f, indent=2)
+    json.dump(data[:1], f, indent=2)
 print('Created test dataset with 20 conversations')
 "
 

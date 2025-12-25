@@ -1,3 +1,4 @@
-./test_*
-./data_*
-./worker_logs_*
+test_*
+data_*
+worker_logs*
+locomo_memory_benchmark_*
