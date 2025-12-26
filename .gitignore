@@ -2,3 +2,4 @@ test_*
 data_*
 worker_logs*
 locomo_memory_benchmark_*
+./data
