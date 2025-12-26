@@ -142,13 +142,36 @@ def process_indexing(
         
         # Create directory for this conversation
         conv_dir = os.path.join(base_output_dir, conv_id)
-        os.makedirs(conv_dir, exist_ok=True)
         
-        print(f"\nProcessing conversation {conv_idx + 1}/{len(dataset)}: {conv_id}")
-        print(f"  Turns to add: {len(turns)}")
+        # RESUME CAPABILITY: Check if already completed
+        completed_flag = os.path.join(conv_dir, "completed.flag")
+        if os.path.exists(completed_flag):
+            print(f"  ⏭️  Skipping {conv_id} (already completed)")
+            continue
+            
+        # Turn-level Resume: Load existing progress
+        processed_turns_file = os.path.join(conv_dir, "processed_turns.json")
+        processed_turns = set()
+        if os.path.exists(processed_turns_file):
+            try:
+                with open(processed_turns_file, 'r') as f:
+                    processed_turns = set(json.load(f))
+                print(f"  Resuming {conv_id}: {len(processed_turns)} turns already processed")
+            except Exception as e:
+                print(f"  ⚠️  Error loading processed_turns.json: {e}")
+                
+        # Initialize A-mem memory system with full features
+        # Check if persistent DB exists to load from it (AgenticMemorySystem doesn't load inherently, 
+        # but we need to ensure we don't overwrite if we are not clearing)
+        # However, AgenticMemorySystem inits with empty dicts. 
+        # Since we are appending to persistent ChromaDB (on disk), we can continue seamlessly.
+        # But we need to make sure we don't lose the "in-memory" state if we need it for evolution?
+        # Evolution relies on `self.memories` which is in-memory.
+        # IF WE CRASH AND RESTART, `self.memories` is EMPTY. 
+        # Evolution will assume no history. This is a limitation unless we reload `self.memories` from ChromaDB.
+        # For now, we accept this limitation for resume capability (evolution might be suboptimal for resumed turns but resumes are rare).
         
         try:
-            # Initialize A-mem memory system with full features
             memory_system = AgenticMemorySystem(
                 model_name=model_name,
                 llm_backend=llm_backend,
@@ -159,10 +182,28 @@ def process_indexing(
                 disable_thinking=disable_thinking
             )
             
+            # NOTE: Ideally we should reload `self.memories` from persistent ChromaDB to keep context for evolution.
+            # But AgenticMemorySystem API doesn't support easy reloading yet.
+            #Proceeding with "append-only" approach.
+
             # Add each turn to memory system
             added_count = 0
             for turn_idx, turn in enumerate(tqdm(turns, desc=f"Adding turns [{conv_id}]", leave=False)):
+                timestamp = turn.get("timestamp", "")
+                
+                # Check if already processed (using timestamp + content hash or just unique ID if available)
+                # Using timestamp + turn_idx as unique key for simplicity/robustness
+                turn_key = f"{turn_idx}_{timestamp}"
+                
+                if turn_key in processed_turns:
+                    # Skip without logging to keep output clean, update progress bar
+                    continue
+
                 try:
+                    # Fail-Fast: Check for critical errors
+                    # Note: AgenticMemorySystem might catch errors internally, so we need to be careful.
+                    # Ideally, AgenticMemorySystem should propagate critical errors.
+                    
                     # Convert timestamp to YYYYMMDDHHmm format if needed
                     timestamp = turn["timestamp"]
                     
@@ -177,55 +218,53 @@ def process_indexing(
                     )
                     added_count += 1
                     
+                    # --- Persistence Block (Save as you go) ---
+                    # 1. Update processed tracking
+                    processed_turns.add(turn_key)
+                    with open(processed_turns_file, 'w') as f:
+                        json.dump(list(processed_turns), f)
+                        
+                    # 2. Persist ChromaDB immediately
+                    # We are doing this every turn to ensure "save as you go"
+                    import chromadb
+                    from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
+                    
+                    # Create persistent client (doing this repeatedly is checking existence mostly)
+                    persistent_client = chromadb.PersistentClient(path=conv_dir)
+                    embedding_function = SentenceTransformerEmbeddingFunction(model_name=model_name)
+                    
+                    persistent_collection = persistent_client.get_or_create_collection(
+                        name="memories",
+                        embedding_function=embedding_function
+                    )
+                    
+                    # Sync only the new note to persistent DB
+                    # We know note_id was just added.
+                    # Retrieve it from in-memory collection
+                    in_memory_collection = memory_system.retriever.collection
+                    new_mem = in_memory_collection.get(ids=[note_id], include=["metadatas", "documents", "embeddings"])
+                    
+                    if new_mem and new_mem['ids']:
+                        persistent_collection.add(
+                            ids=new_mem["ids"],
+                            documents=new_mem["documents"],
+                            metadatas=new_mem["metadatas"],
+                            embeddings=new_mem["embeddings"]
+                        )
+                    # ------------------------------------------
+
                 except Exception as e:
+                    # FAIL-FAST: Stop worker immediately on critical errors
+                    error_msg = str(e).lower()
+                    if "500" in error_msg or "connection" in error_msg or "internal server" in error_msg:
+                        print(f"  ❌ CRITICAL ERROR (Fail-Fast): {e}")
+                        sys.exit(1) # Exit immediately with error code
+                    
                     print(f"  Error adding turn {turn_idx} for {conv_id}: {e}")
                     continue
             
-            # Manually persist ChromaDB to disk
-            # AgenticMemorySystem uses in-memory ChromaDB, need to save to persistent location
-            print(f"\n  💾 Saving ChromaDB to disk...")
-            try:
-                import chromadb
-                from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
-                
-                # Create persistent client
-                persistent_client = chromadb.PersistentClient(path=conv_dir)
-                embedding_function = SentenceTransformerEmbeddingFunction(model_name=model_name)
-                
-                # Create persistent collection
-                persistent_collection = persistent_client.get_or_create_collection(
-                    name="memories",
-                    embedding_function=embedding_function
-                )
-                
-                # Copy all data from in-memory to persistent
-                in_memory_collection = memory_system.retriever.collection
-                count = in_memory_collection.count()
-                
-                if count > 0:
-                    # Get all data from in-memory collection
-                    all_data = in_memory_collection.get(
-                        include=["metadatas", "documents", "embeddings"]
-                    )
-                    
-                    # Add to persistent collection in batches
-                    batch_size = 100
-                    for i in range(0, len(all_data["ids"]), batch_size):
-                        end_idx = min(i + batch_size, len(all_data["ids"]))
-                        persistent_collection.add(
-                            ids=all_data["ids"][i:end_idx],
-                            documents=all_data["documents"][i:end_idx],
-                            metadatas=all_data["metadatas"][i:end_idx],
-                            embeddings=all_data["embeddings"][i:end_idx]
-                        )
-                    
-                    print(f"  ✅ Saved {count} memories to persistent ChromaDB")
-                else:
-                    print(f"  ⚠️  No memories to save")
-                    
-            except Exception as e:
-                print(f"  ❌ Error saving ChromaDB: {e}")
-                raise
+            # (Loop finished) - Final persistence check not strictly needed if we save every turn, 
+            # but we definitely need to save the final metadata.
             
             # Save memory metadata
             # Cannot pickle AgenticMemorySystem due to ChromaDB/SentenceTransformer objects
@@ -249,6 +288,11 @@ def process_indexing(
                 json.dump(metadata, f, indent=2)
             
             index_metadata.append(metadata)
+            
+            # Mark as completed
+            completed_flag = os.path.join(conv_dir, "completed.flag")
+            with open(completed_flag, 'w') as f:
+                f.write(datetime.now().isoformat())
             
             print(f"  Successfully indexed {added_count}/{len(turns)} turns")
             print(f"  ChromaDB persisted to: {conv_dir}")

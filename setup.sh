@@ -42,7 +42,7 @@ echo ""
 
 # 3. Set TMPDIR to avoid disk space issues
 echo "📌 Setting TMPDIR to avoid disk space issues..."
-export TMPDIR="/home/vinhpq/.tmp"
+export TMPDIR="./.tmp"
 mkdir -p "$TMPDIR"
 echo "✅ TMPDIR set to $TMPDIR"
 echo ""
@@ -76,43 +76,51 @@ python3 -c "import nltk; nltk.download('punkt', quiet=True); nltk.download('punk
 echo "✅ NLTK data downloaded"
 echo ""
 
-# 7. Check data symlink
-echo "📌 Checking data symlink..."
-if [ -L "data" ]; then
-    echo "✅ Data symlink already exists"
-elif [ ! -d "../mem0/data" ]; then
-    echo "❌ mem0/data directory not found. Please run mem0 setup first."
-    exit 1
-else
-    ln -sf ../mem0/data data
-    echo "✅ Data symlink created"
-fi
-echo ""
 
-# 8. Verify datasets
-echo "📌 Verifying datasets..."
-LOCOMO_FILE="data/locomo/processed_data/locomo_processed_data.json"
-LONGMEMEVAL_FILE="data/locomo/processed_data/longmemeval_processed_data.json"
-
-if [ -f "$LOCOMO_FILE" ]; then
-    echo "✅ LoCoMo dataset found"
+# 7. Download dataset
+echo "▶ Downloading dataset..."
+if [ -d "data/locomo/processed_data" ] && [ -f "data/locomo/processed_data/locomo_small.json" ]; then
+    echo "✅ Dataset already exists at: data/locomo/processed_data/locomo_small.json"
 else
-    echo "⚠️  LoCoMo dataset not found at $LOCOMO_FILE"
-    echo "   Run: cd ../mem0 && bash setup.sh"
-fi
+    echo "   Downloading from HuggingFace (KhangPTT373/locomo)..."
+    mkdir -p data
+    
+    python3 <<'EOF'
+from huggingface_hub import snapshot_download
+import os
 
-if [ -f "$LONGMEMEVAL_FILE" ]; then
-    echo "✅ LongMemEval dataset found"
-else
-    echo "⚠️  LongMemEval dataset not found at $LONGMEMEVAL_FILE"
-    echo "   This dataset may need to be downloaded separately"
+try:
+    snapshot_download(
+        repo_id="KhangPTT373/locomo",
+        local_dir="data/locomo",
+        repo_type="dataset"
+    )
+    print("✅ Dataset downloaded successfully!")
+except Exception as e:
+    print(f"❌ Failed to download dataset: {e}")
+    print("   Please check your internet connection and try again")
+    exit(1)
+EOF
+    
+    if [ $? -ne 0 ]; then
+        exit 1
+    fi
+    
+    # Verify download
+    if [ -f "data/locomo/processed_data/locomo_processed_data.json" ]; then
+        echo "✅ Dataset verified: data/locomo/processed_data/locomo_processed_data.json"
+    else
+        echo "❌ Dataset file not found"
+        echo "   Expected: data/locomo/processed_data/locomo_processed_data.json"
+        exit 1
+    fi
 fi
 echo ""
 
 # 9. Create worker_logs directory
 echo "📌 Creating worker_logs directory..."
-mkdir -p worker_logs
-echo "✅ worker_logs directory created"
+mkdir -p worker_logs/locomo
+echo "✅ worker_logs/locomo directory created"
 echo ""
 
 # 10. Test A-mem installation
@@ -127,11 +135,3 @@ echo ""
 echo "=========================================="
 echo "✅ Setup completed successfully!"
 echo "=========================================="
-echo ""
-echo "Next steps:"
-echo "  1. Activate environment: conda activate amem"
-echo "  2. Run quick test: bash quick_test.sh"
-echo "  3. Run full benchmark: bash full_benchmark_locomo.sh"
-echo ""
-
-

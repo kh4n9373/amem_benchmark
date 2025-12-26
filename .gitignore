@@ -3,3 +3,6 @@ data_*
 worker_logs*
 locomo_memory_benchmark_*
 ./data
+data/
+locomo_memory_benchmark/
+locomo_results_*

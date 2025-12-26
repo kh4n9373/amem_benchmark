@@ -139,6 +139,9 @@ def main():
     parser.add_argument("--context_k", type=int, default=5, help="Number of chunks to use as context")
     parser.add_argument("--limit", type=int, default=None, help="Limit number of questions (for testing)")
     
+    # Logging config
+    parser.add_argument("--log_dir", default=None, help="Directory for worker logs")
+    
     args = parser.parse_args()
     
     # Convert to absolute paths
@@ -187,50 +190,76 @@ def main():
     print("\n📝 STEP 1: Indexing with A-mem...")
     
     if args.max_workers > 1:
-        # Parallel indexing
+        # Parallel indexing with kill-all strategy
         print(f"Running parallel indexing with {args.max_workers} workers...")
         index_processes = []
         
-        for worker_id in range(args.max_workers):
-            index_cmd = [
-                "python3", index_script,
-                dataset_file,
-                memory_dir,
-                "--model_name", args.embedding_model,
-                "--llm_model", args.llm_model,
-                "--api_key", args.api_key,
-                "--evo_threshold", str(args.evo_threshold),
-                "--num_shards", str(args.max_workers),
-                "--shard_id", str(worker_id),
-            ]
-            
-            if args.base_url:
-                index_cmd.extend(["--base_url", args.base_url])
-            
-            if args.disable_thinking:
-                index_cmd.append("--disable_thinking")
-            
-            log_file = os.path.join(script_dir, "worker_logs", f"worker_{worker_id}.log")
-            os.makedirs(os.path.dirname(log_file), exist_ok=True)
-            
-            print(f"  Starting worker {worker_id}...")
-            with open(log_file, 'w') as f:
-                proc = subprocess.Popen(index_cmd, stdout=f, stderr=subprocess.STDOUT)
-                index_processes.append((proc, worker_id, log_file))
+        # Ensure unbuffered output for real-time streaming
+        env = os.environ.copy()
+        env["PYTHONUNBUFFERED"] = "1"
         
-        # Wait for all workers
-        print(f"\n⏳ Waiting for {args.max_workers} workers to complete...")
-        all_success = True
-        for proc, worker_id, log_file in index_processes:
-            proc.wait()
-            if proc.returncode != 0:
-                print(f"❌ Worker {worker_id} failed! Check log: {log_file}")
-                all_success = False
-            else:
-                print(f"✅ Worker {worker_id} completed")
-        
-        if not all_success:
-            sys.exit(1)
+        try:
+            for worker_id in range(args.max_workers):
+                index_cmd = [
+                    "python3", index_script,
+                    dataset_file,
+                    memory_dir,
+                    "--model_name", args.embedding_model,
+                    "--llm_model", args.llm_model,
+                    "--api_key", args.api_key,
+                    "--evo_threshold", str(args.evo_threshold),
+                    "--num_shards", str(args.max_workers),
+                    "--shard_id", str(worker_id),
+                ]
+                
+                if args.base_url:
+                    index_cmd.extend(["--base_url", args.base_url])
+                
+                if args.disable_thinking:
+                    index_cmd.append("--disable_thinking")
+                
+                print(f"  Starting worker {worker_id}...")
+                
+                # Direct streaming to terminal (no pipes, no delays)
+                proc = subprocess.Popen(index_cmd, stdout=None, stderr=None, env=env)
+                
+                index_processes.append((proc, worker_id))
+            
+            # Monitoring loop
+            print(f"\n⏳ Monitoring {args.max_workers} workers...")
+            
+            failed = False
+            while True:
+                all_done = True
+                for proc, worker_id in index_processes:
+                    ret = proc.poll()
+                    if ret is None:
+                        all_done = False
+                    elif ret != 0:
+                        print(f"❌ Worker {worker_id} FAILED with exit code {ret}!")
+                        failed = True
+                        break
+                
+                if failed or all_done:
+                    break
+                
+                time.sleep(1)
+            
+            if failed:
+                print("⚠️  One or more workers failed. Terminating all others (Fail-Fast)...")
+                for proc, _ in index_processes:
+                    if proc.poll() is None:
+                        proc.terminate()
+                        try:
+                            proc.wait(timeout=5)
+                        except:
+                            proc.kill()
+                sys.exit(1)
+                
+            print("✅ All workers completed successfully")
+            
+        finally:
+            pass
         
         timings['indexing'] = time.time() - pipeline_start
     else:
