@@ -676,8 +676,38 @@ class AgenticMemorySystem:
                     }}
                 )
                 
-                response_json = json.loads(response)
-                should_evolve = response_json["should_evolve"]
+                if not response:
+                    logger.warning(f"LLM returned empty response for memory evolution of note {note.id}")
+                    return False, note
+
+                if hasattr(response, 'content'): # Handle objects that might be returned
+                     response = response.content
+
+                if not isinstance(response, str):
+                     # Try to convert if it's bytes or bytearray or dict
+                     if isinstance(response, (bytes, bytearray)):
+                         response = response.decode('utf-8')
+                     elif isinstance(response, dict):
+                         response_json = response # already dict
+                         response = json.dumps(response) # for conformity below if needed, but we can jump ahead
+                     else:
+                         logger.warning(f"LLM returned unexpected type {type(response)} for memory evolution")
+                         return False, note
+                
+                if isinstance(response, str):
+                    # Clean up code blocks if present
+                    if "```json" in response:
+                        response = response.split("```json")[1].split("```")[0].strip()
+                    elif "```" in response:
+                        response = response.split("```")[0].strip()
+                    
+                    try:
+                        response_json = json.loads(response)
+                    except json.JSONDecodeError as e:
+                         logger.warning(f"Failed to decode JSON from LLM: {e}. partial response: {response[:100]}...")
+                         return False, note
+                
+                should_evolve = response_json.get("should_evolve", False)
                 
                 if should_evolve:
                     actions = response_json["actions"]

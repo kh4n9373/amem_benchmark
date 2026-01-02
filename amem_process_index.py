@@ -40,44 +40,51 @@ def extract_turns(dialogs):
         # Group messages into user-assistant pairs
         i = 0
         while i < len(messages):
-            # Look for user message
-            if i < len(messages) and messages[i].get('role') in ['user', 'User', 'Caroline', 'Melanie']:
-                user_msg = messages[i]
-                user_content = user_msg.get('content', '')
-                user_role = user_msg.get('role', 'user')
-                
-                # Look for assistant response
-                assistant_content = ""
-                assistant_role = ""
-                if i + 1 < len(messages):
-                    assistant_msg = messages[i + 1]
-                    assistant_role = assistant_msg.get('role', 'assistant')
-                    # Check if it's an assistant/response message
-                    if assistant_role not in ['user', 'User', 'Caroline', 'Melanie'] or (
-                        i + 1 < len(messages) - 1 and assistant_role != user_role
-                    ):
-                        assistant_content = assistant_msg.get('content', '')
-                        i += 2  # Move past both messages
-                    else:
-                        i += 1  # Only user message
-                else:
-                    i += 1  # Last message, no assistant response
-                
-                # Create turn
-                if user_content:  # Only create turn if user message exists
-                    turn_content = f"User: {user_content}"
-                    if assistant_content:
-                        turn_content += f"\nAssistant: {assistant_content}"
-                    
-                    turns.append({
-                        "content": turn_content,
-                        "timestamp": timestamp,
-                        "session_id": session_id,
-                        "user_role": user_role,
-                        "assistant_role": assistant_role if assistant_content else None
-                    })
-            else:
+            # Determine current message role
+            current_msg = messages[i]
+            current_role = current_msg.get('role', 'user')
+            
+            # Skip if explicitly assistant or system (we want to start turns with user/initiator)
+            if current_role in ['assistant', 'Assistant', 'system', 'System', 'model', 'Model']:
                 i += 1
+                continue
+
+            # Treat as user/initiator message
+            user_msg = current_msg
+            user_content = user_msg.get('content', '')
+            user_role = current_role
+            
+            # Look for assistant/responder response
+            assistant_content = ""
+            assistant_role = ""
+            
+            if i + 1 < len(messages):
+                next_msg = messages[i + 1]
+                next_role = next_msg.get('role', 'assistant')
+                
+                # Check if it's a response (different role)
+                if next_role != user_role:
+                    assistant_content = next_msg.get('content', '')
+                    assistant_role = next_role
+                    i += 2  # Move past both messages
+                else:
+                    i += 1 # Same role, consume user message
+            else:
+                i += 1  # Last message
+                
+            # Create turn
+            if user_content:
+                turn_content = f"User: {user_content}"
+                if assistant_content:
+                    turn_content += f"\nAssistant: {assistant_content}"
+                
+                turns.append({
+                    "content": turn_content,
+                    "timestamp": timestamp,
+                    "session_id": session_id,
+                    "user_role": user_role,
+                    "assistant_role": assistant_role if assistant_content else None
+                })
     
     return turns
 
