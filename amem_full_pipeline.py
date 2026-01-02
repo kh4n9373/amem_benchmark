@@ -165,8 +165,8 @@ def main():
     script_dir = os.path.dirname(os.path.abspath(__file__))
     index_script = os.path.join(script_dir, "amem_process_index.py")
     retrieve_script = os.path.join(script_dir, "amem_process_retrieve.py")
-    retrieval_eval_script = os.path.join(os.path.dirname(script_dir), "retrieval_evaluator.py")
-    generation_eval_script = os.path.join(os.path.dirname(script_dir), "generation_evaluator.py")
+    retrieval_eval_script = os.path.join(script_dir, "retrieval_evaluator.py")
+    generation_eval_script = os.path.join(script_dir, "generation_evaluator.py")
     
     # Start timer
     pipeline_start = time.time()

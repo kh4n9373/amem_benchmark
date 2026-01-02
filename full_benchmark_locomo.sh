@@ -7,7 +7,7 @@ echo ""
 timestamp=$(date +%Y%m%d_%H%M%S)
 
 python3 amem_full_pipeline.py \
-    data/locomo/processed_data/locomo_lite.json \
+    data/locomo/processed_data/locomo_processed_data.json \
     locomo_memory_benchmark \
     locomo_results_${timestamp} \
     --max_workers 2 \
