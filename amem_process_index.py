@@ -142,6 +142,7 @@ def process_indexing(
         
         # Create directory for this conversation
         conv_dir = os.path.join(base_output_dir, conv_id)
+        os.makedirs(conv_dir, exist_ok=True)
         
         # RESUME CAPABILITY: Check if already completed
         completed_flag = os.path.join(conv_dir, "completed.flag")

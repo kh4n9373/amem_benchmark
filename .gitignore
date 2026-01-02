@@ -6,3 +6,5 @@ locomo_memory_benchmark_*
 data/
 locomo_memory_benchmark/
 locomo_results_*
+.tmp/
+upload_data_to_hf.py

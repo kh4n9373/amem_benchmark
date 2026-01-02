@@ -1,137 +1,105 @@
 #!/bin/bash
-# Setup script for A-mem benchmark pipeline
-# This script sets up the environment, installs dependencies, and prepares data
+# Setup script for A-mem benchmark pipeline (FIXED: uv editable git error + SQLite)
 
-set -e  # Exit on error
+set -e
 
-echo "🚀 A-mem Benchmark Pipeline Setup"
-echo "=================================="
-echo ""
+echo "🚀 A-mem Benchmark Setup (uv + SQLite fix)"
+echo "=========================================="
 
-# Get the directory where this script is located
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-# 1. Check Python version
-echo "📌 Checking Python version..."
-python3 --version
-if [ $? -ne 0 ]; then
-    echo "❌ Python 3 not found. Please install Python 3.8 or higher."
-    exit 1
+# 0. Kiểm tra uv
+if ! command -v uv &> /dev/null; then
+    echo "❌ uv chưa được cài. Đang cài đặt..."
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+    source $HOME/.cargo/env
 fi
-echo "✅ Python check passed"
-echo ""
 
-# 2. Create/activate conda environment (optional but recommended)
-echo "📌 Checking for conda environment 'amem'..."
-if command -v conda &> /dev/null; then
-    if conda env list | grep -q "^amem "; then
-        echo "✅ Conda environment 'amem' already exists"
-    else
-        echo "Creating conda environment 'amem'..."
-        conda create -n amem python=3.10 -y
-        echo "✅ Conda environment created"
-    fi
-    echo ""
-    echo "💡 To activate: conda activate amem"
-else
-    echo "⚠️  Conda not found. Using system Python."
-    echo "💡 Consider using conda or venv for better dependency isolation."
-fi
-echo ""
+# 1. Tạo môi trường ảo
+echo "📌 Tạo virtual environment (Python 3.10)..."
+uv venv .venv --python 3.10
+source .venv/bin/activate
+echo "✅ Đã kích hoạt .venv"
 
-# 3. Set TMPDIR to avoid disk space issues
-echo "📌 Setting TMPDIR to avoid disk space issues..."
+# 2. Setup TMPDIR
 export TMPDIR="./.tmp"
 mkdir -p "$TMPDIR"
-echo "✅ TMPDIR set to $TMPDIR"
-echo ""
 
-# 4. Install A-mem package
-echo "📌 Installing A-mem package..."
-A_MEM_DIR="$SCRIPT_DIR/amem"
-if [ -d "$A_MEM_DIR" ]; then
-    pip install -e "$A_MEM_DIR"
-    echo "✅ A-mem package installed"
-else
-    echo "❌ A-mem directory not found at $A_MEM_DIR"
-    exit 1
-fi
-echo ""
+# 3. Cài đặt dependencies
+echo "📌 Đang cài dependencies..."
 
-# 5. Install requirements
-echo "📌 Installing Python dependencies from requirements.txt..."
+# --- [BƯỚC 1] Cài gói fix lỗi SQLite ---
+echo "   -> Cài đặt pysqlite3-binary (Fix lỗi ChromaDB)..."
+uv pip install pysqlite3-binary
+
+# --- [BƯỚC 2] Xử lý requirements.txt (Lọc bỏ dòng -e git+ gây lỗi) ---
 if [ -f "requirements.txt" ]; then
-    pip install -r requirements.txt
-    echo "✅ Dependencies installed"
-else
-    echo "❌ requirements.txt not found"
-    exit 1
-fi
-echo ""
-
-# 6. Download NLTK data
-echo "📌 Downloading NLTK data..."
-python3 -c "import nltk; nltk.download('punkt', quiet=True); nltk.download('punkt_tab', quiet=True)" 2>/dev/null || true
-echo "✅ NLTK data downloaded"
-echo ""
-
-
-# 7. Download dataset
-echo "▶ Downloading dataset..."
-if [ -d "data/locomo/processed_data" ] && [ -f "data/locomo/processed_data/locomo_small.json" ]; then
-    echo "✅ Dataset already exists at: data/locomo/processed_data/locomo_small.json"
-else
-    echo "   Downloading from HuggingFace (KhangPTT373/locomo)..."
-    mkdir -p data
+    echo "   -> Đang xử lý requirements.txt..."
+    # Tạo file tạm, loại bỏ dòng chứa 'git+' và '-e' đi cùng nhau
+    grep -vE "^\s*-e\s+git\+" requirements.txt > requirements.tmp
     
-    python3 <<'EOF'
-from huggingface_hub import snapshot_download
-import os
+    echo "   -> Cài đặt từ file đã lọc..."
+    uv pip install -r requirements.tmp
+    rm requirements.tmp # Xóa file tạm
+else
+    echo "⚠️ Không thấy requirements.txt"
+fi
 
+# --- [BƯỚC 3] Cài package A-mem từ local (Thay thế cho dòng git vừa xóa) ---
+if [ -d "amem" ]; then
+    echo "   -> Cài package A-mem (Local Editable)..."
+    uv pip install -e "amem"
+fi
+
+# 4. [QUAN TRỌNG] Tự động sửa code để nhận SQLite mới (Cách cũ - Backup)
+echo "📌 Đang patch code (Backup method)..."
+TARGET_FILE="amem/agentic_memory/memory_system.py"
+if [ -f "$TARGET_FILE" ]; then
+    if ! grep -q "sys.modules\['sqlite3'\]" "$TARGET_FILE"; then
+        sed -i "1s|^|__import__('pysqlite3'); import sys; sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')\n|" "$TARGET_FILE"
+        echo "✅ Đã patch file memory_system.py"
+    fi
+fi
+
+# 5. [QUAN TRỌNG NHẤT] Fix toàn cục bằng sitecustomize (Chữa tận gốc)
+echo "📌 Đang tiêm thuốc fix SQLite vào hệ thống (Sitecustomize)..."
+SITE_PACKAGES=$(python -c "import site; print(site.getsitepackages()[0])")
+cat <<EOF > "$SITE_PACKAGES/sitecustomize.py"
+import sys
 try:
-    snapshot_download(
-        repo_id="KhangPTT373/locomo",
-        local_dir="data/locomo",
-        repo_type="dataset"
-    )
-    print("✅ Dataset downloaded successfully!")
-except Exception as e:
-    print(f"❌ Failed to download dataset: {e}")
-    print("   Please check your internet connection and try again")
-    exit(1)
+    import pysqlite3
+    sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
+except ImportError:
+    pass
 EOF
-    
-    if [ $? -ne 0 ]; then
-        exit 1
-    fi
-    
-    # Verify download
-    if [ -f "data/locomo/processed_data/locomo_processed_data.json" ]; then
-        echo "✅ Dataset verified: data/locomo/processed_data/locomo_processed_data.json"
-    else
-        echo "❌ Dataset file not found"
-        echo "   Expected: data/locomo/processed_data/locomo_processed_data.json"
-        exit 1
-    fi
-fi
-echo ""
+echo "✅ Đã tạo file sitecustomize.py tại $SITE_PACKAGES"
 
-# 9. Create worker_logs directory
-echo "📌 Creating worker_logs directory..."
+
+# 6. Download NLTK & Data
+echo "📌 Kiểm tra dữ liệu..."
+python -c "import nltk; nltk.download('punkt', quiet=True); nltk.download('punkt_tab', quiet=True)" 2>/dev/null || true
+
+if [ ! -f "data/locomo/processed_data/locomo_processed_data.json" ]; then
+    echo "▶ Downloading dataset..."
+    mkdir -p data
+    python <<'EOF'
+from huggingface_hub import snapshot_download
+try:
+    snapshot_download(repo_id="KhangPTT373/locomo", local_dir="data/locomo", repo_type="dataset")
+except Exception as e: exit(1)
+EOF
+fi
+
 mkdir -p worker_logs/locomo
-echo "✅ worker_logs/locomo directory created"
-echo ""
 
-# 10. Test A-mem installation
-echo "📌 Testing A-mem installation..."
-python3 -c "from agentic_memory.memory_system import AgenticMemorySystem; print('✅ A-mem import successful')"
-if [ $? -ne 0 ]; then
-    echo "❌ A-mem import failed"
-    exit 1
-fi
-echo ""
+# 7. Test
+echo "📌 Test thử import..."
+python -c "import sqlite3; print(f'🔥 SQLite version đang dùng: {sqlite3.sqlite_version}'); from agentic_memory.memory_system import AgenticMemorySystem; print('✅ A-mem import OK!')"
 
+echo ""
 echo "=========================================="
-echo "✅ Setup completed successfully!"
+echo "✅ Cài đặt hoàn tất!"
+echo "⚠️  QUAN TRỌNG: Trước khi chạy lệnh khác, hãy gõ:"
+echo "   source .venv/bin/activate"
 echo "=========================================="

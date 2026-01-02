@@ -1,3 +1,4 @@
+__import__('pysqlite3'); import sys; sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
 import keyword
 from typing import List, Dict, Optional, Any, Tuple
 import uuid
@@ -18,6 +19,7 @@ import pickle
 from pathlib import Path
 from litellm import completion
 import time
+
 
 logger = logging.getLogger(__name__)
 

@@ -3,7 +3,9 @@
 A-mem Full Benchmark Pipeline
 Orchestrates the complete benchmark: Index -> Retrieve -> Evaluate (Retrieval + Generation)
 """
-
+__import__('pysqlite3')
+import sys
+sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
 import argparse
 import json
 import os
